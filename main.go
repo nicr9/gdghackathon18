@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,11 +20,14 @@ type Beacon struct {
 
 func (b *Beacon) Register() {
 	uri := fmt.Sprintf("/session/%s", b.UUID)
-	session, err := url.Parse(uri)
+	sessionUrl, err := url.Parse(uri)
 	if err != nil {
 		b.SessionURL = ""
 	} else {
-		b.SessionURL = session.Path
+		b.SessionURL = sessionUrl.Path
+		session := newSession()
+		http.Handle(sessionUrl.Path, session)
+		go session.run()
 	}
 }
 
@@ -79,6 +83,101 @@ func FindBeacon(w http.ResponseWriter, r *http.Request) {
 	// Return a response
 	resp := FindResponse{Error: false, Message: "Session created!", Beacon: req.Beacon}
 	json.NewEncoder(w).Encode(resp)
+}
+
+// -----
+
+type client struct {
+	socket  *websocket.Conn
+	send    chan []byte
+	session *session
+}
+
+func (c *client) read() {
+	for {
+		if _, body, err := c.socket.ReadMessage(); err != nil {
+			c.session.forward <- body
+		} else {
+			break
+		}
+	}
+
+	c.socket.Close()
+}
+
+func (c *client) write() {
+	for msg := range c.send {
+		if err := c.socket.WriteMessage(websocket.TextMessage, msg); err != nil {
+			break
+		}
+	}
+
+	c.socket.Close()
+}
+
+type session struct {
+	forward chan []byte
+	join    chan *client
+	leave   chan *client
+	clients map[*client]bool
+}
+
+func newSession() *session {
+	return &session{
+		forward: make(chan []byte),
+		join:    make(chan *client),
+		leave:   make(chan *client),
+		clients: make(map[*client]bool),
+	}
+}
+
+func (s *session) run() {
+	for {
+		select {
+		case client := <-s.join:
+			s.clients[client] = true
+		case client := <-s.leave:
+			delete(s.clients, client)
+			close(client.send)
+		case msg := <-s.forward:
+			for client := range s.clients {
+				select {
+				case client.send <- msg:
+					//
+				default:
+					delete(s.clients, client)
+					close(client.send)
+				}
+			}
+			//
+		}
+	}
+}
+
+const (
+	socketBufferSize  = 1024
+	messageBufferSize = 256
+)
+
+var upgrader = &websocket.Upgrader{ReadBufferSize: socketBufferSize, WriteBufferSize: socketBufferSize}
+
+func (s *session) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	socket, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Fatal("Failed to establish a websocket:", err)
+		return
+	}
+
+	client := &client{
+		socket:  socket,
+		send:    make(chan []byte, messageBufferSize),
+		session: s,
+	}
+
+	s.join <- client
+	defer func() { s.leave <- client }()
+	go client.write()
+	client.read()
 }
 
 // -----
