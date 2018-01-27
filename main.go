@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 )
 
 // -----
@@ -15,18 +17,21 @@ type Beacon struct {
 	UUID       string `json:"uuid"`
 	MAC        string `json:"mac"`
 	Name       string `json:"name"`
-	SessionURL string `json:"session-url,omitempty"`
+	SessionURL string `json:"session_url,omitempty"`
 }
 
 func (b *Beacon) Register() {
-	uri := fmt.Sprintf("/session/%s", b.UUID)
-	sessionUrl, err := url.Parse(uri)
+	sessionPath := fmt.Sprintf("/session/%s", b.UUID)
+	sessionUrl, err := url.Parse(sessionPath)
 	if err != nil {
 		b.SessionURL = ""
 	} else {
 		b.SessionURL = sessionUrl.Path
+
+		wsPath := fmt.Sprintf("/wb/%s", b.UUID)
+		wsUrl, _ := url.Parse(wsPath)
 		session := newSession()
-		http.Handle(sessionUrl.Path, session)
+		http.Handle(wsUrl, session)
 		go session.run()
 	}
 }
@@ -39,8 +44,11 @@ type ErrorResponse struct {
 }
 
 func Homepage(w http.ResponseWriter, r *http.Request) {
-	resp := ErrorResponse{Error: true, Message: "Endpoint not supported"}
-	json.NewEncoder(w).Encode(resp)
+	file, _ := os.Open("./index.html")
+
+	if _, err := io.Copy(w, file); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // -----
