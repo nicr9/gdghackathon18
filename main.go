@@ -14,7 +14,6 @@ type Beacon struct {
 	UUID      string `json:"uuid"`
 	MAC       string `json:"mac"`
 	Name      string `json:"name"`
-	Owner     Owner  `json:"owner"`
 	StatusURL string `json:"status-url,omitempty"`
 }
 
@@ -26,13 +25,6 @@ func (b *Beacon) Register() {
 	} else {
 		b.StatusURL = status.Path
 	}
-}
-
-// -----
-
-type Owner struct {
-	Name        string `json:"name"`
-	PhoneNumber string `json:"phone-number"`
 }
 
 // -----
