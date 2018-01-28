@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Beacon locator backend example session</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  </head>
+  <body>
+      <div>Beacon status: <span style="color:red" id="beacon-status">Lost</span></div>
+
+      <br>
+
+      <input id="device-found" type="button" value="Device found!"/>
+      <script>
+          var socket = null;
+          $(function() {
+              var beaconStatus = $("#beacon-status");
+              $("#device-found")[0].onclick = function(){
+                  if (!socket) {
+                      alert("Error: no connection to backend");
+                      return false
+                  } else {
+                      socket.send("{}");
+                  }
+
+                  return false;
+              };
+              if (!window["WebSocket"]) {
+                  alert("Your browser doesn't support websockets");
+              } else {
+                  socket = new WebSocket("ws://" + window.location.host + window.location.pathname.replace("/session", "/ws"));
+                  socket.onerror = function(e) {
+                      alert("Connection error:" + e);
+                  };
+                  socket.onclose = function() {
+                      alert("Connection has been closed");
+                  };
+                  socket.onmessage = function(e) {
+                      beaconStatus.text("Found!");
+                      beaconStatus[0].style.color = "#0d0";
+                  };
+              }
+          });
+      </script>
+  </body>
+</html>

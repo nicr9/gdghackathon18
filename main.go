@@ -28,10 +28,10 @@ func (b *Beacon) Register() {
 	} else {
 		b.SessionURL = sessionUrl.Path
 
-		wsPath := fmt.Sprintf("/wb/%s", b.UUID)
+		wsPath := fmt.Sprintf("/ws/%s", b.UUID)
 		wsUrl, _ := url.Parse(wsPath)
 		session := newSession()
-		http.Handle(wsUrl, session)
+		http.Handle(wsUrl.Path, session)
 		go session.run()
 	}
 }
@@ -86,7 +86,6 @@ func FindBeacon(w http.ResponseWriter, r *http.Request) {
 
 	// Do something with the request obj
 	req.Beacon.Register()
-	log.Println(req)
 
 	// Return a response
 	resp := FindResponse{Error: false, Message: "Session created!", Beacon: req.Beacon}
@@ -103,7 +102,7 @@ type client struct {
 
 func (c *client) read() {
 	for {
-		if _, body, err := c.socket.ReadMessage(); err != nil {
+		if _, body, err := c.socket.ReadMessage(); err == nil {
 			c.session.forward <- body
 		} else {
 			break
@@ -151,7 +150,7 @@ func (s *session) run() {
 			for client := range s.clients {
 				select {
 				case client.send <- msg:
-					//
+					// Message sent
 				default:
 					delete(s.clients, client)
 					close(client.send)
@@ -190,8 +189,17 @@ func (s *session) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // -----
 
+func FindSession(w http.ResponseWriter, r *http.Request) {
+	file, _ := os.Open("./session.html")
+
+	if _, err := io.Copy(w, file); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func main() {
 	http.HandleFunc("/", Homepage)
 	http.HandleFunc("/find/", FindBeacon)
+	http.HandleFunc("/session/", FindSession)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
